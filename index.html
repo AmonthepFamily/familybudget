@@ -581,6 +581,7 @@
     // =========================================================================
     const STORAGE_KEY = 'baanrao_family_budget_v1';
     const CLOUD_URL_KEY = 'baanrao_gas_api_url';
+    const DEFAULT_CLOUD_URL = 'https://script.google.com/macros/s/AKfycbylh9zj1lST31uy91U7fQThEk3Ex-v-3C5JihvGQTwFS58VGvhAdyTykRfPLay1o4OWEA/exec';
     const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
     const ICON_OPTIONS = [
       'utensils','coffee','shopping-cart','shopping-bag','shirt','car','fuel','home',
@@ -698,14 +699,16 @@
 
     function getCloudUrl() {
       try {
-        return localStorage.getItem(CLOUD_URL_KEY) || '';
-      } catch (e) { return ''; }
+        const saved = localStorage.getItem(CLOUD_URL_KEY);
+        if (saved === '__OFF__') return '';
+        return saved || DEFAULT_CLOUD_URL;
+      } catch (e) { return DEFAULT_CLOUD_URL; }
     }
 
     function setCloudUrl(url) {
       try {
-        if (url) localStorage.setItem(CLOUD_URL_KEY, url.trim());
-        else localStorage.removeItem(CLOUD_URL_KEY);
+        if (url && url.trim()) localStorage.setItem(CLOUD_URL_KEY, url.trim());
+        else localStorage.setItem(CLOUD_URL_KEY, '__OFF__');
       } catch (e) {}
     }
 
