@@ -279,6 +279,9 @@
         </div>
       </header>
 
+      <!-- Calendar Owner Scope Bar -->
+      <div id="cal-scope-bar" class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5"></div>
+
       <!-- Expense / Income Toggle -->
       <div class="grid grid-cols-2 p-1 rounded-2xl" style="background: var(--bg-card); border: 1px solid var(--border-subtle);">
         <button type="button" id="cal-type-expense" onclick="setCalType('expense')" class="py-2 rounded-xl text-xs font-semibold transition">รายจ่าย 0 รายการ</button>
@@ -370,6 +373,17 @@
         <div id="family-member-breakdown" class="mt-3 space-y-2"></div>
       </div>
 
+      <!-- Per-Person Debt / Bills Separation Card -->
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-sm font-semibold">สรุปบิลและหนี้แยกตามบุคคล</h2>
+            <p class="text-[11px]" style="color: var(--text-muted);">แยกยอดบิลต่อเดือนและยอดผ่อนคงเหลือของแต่ละคน</p>
+          </div>
+        </div>
+        <div id="family-debt-breakdown" class="space-y-2.5"></div>
+      </div>
+
       <!-- Annual Family Bar Chart -->
       <div class="card p-4">
         <div class="flex items-center justify-between gap-2 mb-3">
@@ -416,9 +430,12 @@
         <div id="me-avatar" class="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-2xl font-bold" style="background: var(--accent-soft); color: var(--accent); border: 2px solid var(--accent);">พ</div>
         <h2 id="me-name" class="text-lg font-bold mt-2.5">คุณพ่อ</h2>
         <p id="me-role" class="text-xs mt-0.5" style="color: var(--text-muted);">หัวหน้าครอบครัว · บ้านเรา</p>
-        <div class="mt-3 flex items-center justify-center gap-2">
+        <p id="me-pin-status" class="text-[11px] mt-1.5" style="color: var(--text-muted);"></p>
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
           <button type="button" onclick="openMemberQuickSwitch()" class="text-xs px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15">สลับบัญชีสมาชิก</button>
+          <button type="button" onclick="openPinSettingsModal()" class="text-xs px-3 py-1.5 rounded-xl bg-sky-500/15 text-sky-300 hover:bg-sky-500/25">ตั้งรหัส PIN</button>
           <button type="button" onclick="openAddMemberModal()" class="text-xs px-3 py-1.5 rounded-xl" style="background: var(--accent-soft); color: var(--accent);">จัดการสมาชิก</button>
+          <button type="button" id="btn-lock-session" onclick="lockActiveAccount()" class="hidden text-xs px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-300">ล็อกบัญชี</button>
         </div>
       </div>
 
@@ -580,6 +597,7 @@
     // DATA MODEL & INITIAL SAMPLE DATA (Thai Family Budget)
     // =========================================================================
     const STORAGE_KEY = 'baanrao_family_budget_v1';
+    const LOCAL_MEMBER_KEY = 'baanrao_local_active_member';
     const CLOUD_URL_KEY = 'baanrao_gas_api_url';
     const DEFAULT_CLOUD_URL = 'https://script.google.com/macros/s/AKfycbylh9zj1lST31uy91U7fQThEk3Ex-v-3C5JihvGQTwFS58VGvhAdyTykRfPLay1o4OWEA/exec';
     const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -625,11 +643,11 @@
           { id: 'sal_3', memberId: 'm_dad', source: 'บริษัท ก (พ่อ)', amount: 32000, startMonth: '2025-01', endMonth: '2025-12', active: false }
         ],
         bills: [
-          { id: 'b_1', name: 'ค่าไฟบ้าน', amount: 2150, variable: true, dueDay: 15, autoPay: false, icon: 'zap', categoryId: 'c_bill', paidMonths: ['2026-10'] },
-          { id: 'b_2', name: 'ค่าเน็ตบ้าน', amount: 599, variable: false, dueDay: 20, autoPay: true, icon: 'wifi', categoryId: 'c_bill', paidMonths: ['2026-10','2026-11'] },
-          { id: 'b_3', name: 'ค่าน้ำประปา', amount: 320, variable: true, dueDay: 24, autoPay: false, icon: 'droplets', categoryId: 'c_bill', paidMonths: ['2026-10'] },
-          { id: 'b_4', name: 'ผ่อนบ้าน/คอนโด', amount: 12500, variable: false, dueDay: 28, autoPay: true, icon: 'home', categoryId: 'c_bill', paidMonths: ['2026-10'] },
-          { id: 'b_5', name: 'ค่ามือถือครอบครัว', amount: 899, variable: false, dueDay: 5, autoPay: true, icon: 'smartphone', categoryId: 'c_bill', paidMonths: ['2026-10','2026-11'] }
+          { id: 'b_1', name: 'ค่าไฟบ้าน', amount: 2150, variable: true, dueDay: 15, autoPay: false, icon: 'zap', categoryId: 'c_bill', memberId: 'm_dad', paidMonths: ['2026-10'] },
+          { id: 'b_2', name: 'ค่าเน็ตบ้าน', amount: 599, variable: false, dueDay: 20, autoPay: true, icon: 'wifi', categoryId: 'c_bill', memberId: 'm_dad', paidMonths: ['2026-10','2026-11'] },
+          { id: 'b_3', name: 'ค่าน้ำประปา', amount: 320, variable: true, dueDay: 24, autoPay: false, icon: 'droplets', categoryId: 'c_bill', memberId: 'm_mom', paidMonths: ['2026-10'] },
+          { id: 'b_4', name: 'ผ่อนบ้าน/คอนโด', amount: 12500, variable: false, dueDay: 28, autoPay: true, icon: 'home', categoryId: 'c_bill', memberId: 'm_dad', paidMonths: ['2026-10'] },
+          { id: 'b_5', name: 'ค่ามือถือครอบครัว', amount: 899, variable: false, dueDay: 5, autoPay: true, icon: 'smartphone', categoryId: 'c_bill', memberId: 'm_mom', paidMonths: ['2026-10','2026-11'] }
         ],
         transactions: [
           // November 2026
@@ -667,11 +685,13 @@
       activeTab: 'home',
       homeCatMode: 'expense',
       calType: 'expense',
+      calScope: null, // null = follow state.activeMemberId, or 'all' / specific memberId
       billFilter: 'unpaid',
       familySelectedMember: 'all',
       familyChartType: 'expense',
       salFilterSource: 'all',
-      salFilterYear: 'all'
+      salFilterYear: 'all',
+      unlockedMemberId: null
     };
     let charts = { yearlyLine: null, catDonut: null, familyBar: null };
 
@@ -788,6 +808,162 @@
       return state.categories.find(c => c.id === id) || { name: 'อื่นๆ', icon: 'circle', color: '#94A3B8', budget: 0 };
     }
 
+    function getBillOwnerId(bill) {
+      if (bill && bill.memberId) return bill.memberId;
+      return state.members[0] ? state.members[0].id : 'm_dad';
+    }
+
+    function getBillOwnerLabel(bill) {
+      const ownerId = getBillOwnerId(bill);
+      if (ownerId === 'shared') return 'กองกลางบ้าน';
+      return getMemberById(ownerId).name;
+    }
+
+    function getBillsForScope(scope) {
+      if (!scope || scope === 'all') return state.bills;
+      return state.bills.filter(b => getBillOwnerId(b) === scope);
+    }
+
+    function saveLocalActiveMember(memberId, scope) {
+      try {
+        localStorage.setItem(LOCAL_MEMBER_KEY, JSON.stringify({ memberId, scope }));
+      } catch (e) {}
+    }
+
+    function loadLocalActiveMember() {
+      try {
+        const raw = localStorage.getItem(LOCAL_MEMBER_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return null;
+    }
+
+    // PIN Guard Helper
+    let _pendingPinCallback = null;
+    let _pendingPinMemberId = null;
+
+    function requireMemberPin(memberId, onSuccess) {
+      const m = getMemberById(memberId);
+      if (!m || !m.pin || ui.unlockedMemberId === m.id) {
+        onSuccess();
+        return;
+      }
+      _pendingPinMemberId = m.id;
+      _pendingPinCallback = onSuccess;
+      openModal(`ยืนยันรหัส PIN ของ ${m.name}`, `
+        <form onsubmit="verifyMemberPinSubmit(event)" class="space-y-4 text-center">
+          <div class="w-14 h-14 rounded-full mx-auto flex items-center justify-center text-xl font-bold" style="background:${m.color}25; color:${m.color}; border:2px solid ${m.color};">${escapeHtml(m.initial || m.name.charAt(0))}</div>
+          <div>
+            <p class="text-sm font-semibold">กรอกรหัส PIN 4 หลักของ "${escapeHtml(m.name)}"</p>
+            <p class="text-[11px] mt-0.5" style="color: var(--text-muted);">เพื่อยืนยันตัวตนก่อนเข้าบันทึก ป้องกันการลงรายการผิดบัญชี</p>
+          </div>
+          <input type="password" id="pin-verify-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" required autofocus class="w-44 mx-auto block px-4 py-3 text-2xl tracking-[0.5em] text-center font-bold num">
+          <p id="pin-verify-error" class="hidden text-xs text-rose-400 font-medium">รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่</p>
+          <div class="flex gap-2 pt-1">
+            <button type="button" onclick="closeModal(); openMemberQuickSwitch()" class="px-4 py-3 rounded-2xl bg-white/10 text-xs">สลับบัญชี</button>
+            <button type="submit" class="flex-1 py-3 rounded-2xl btn-accent text-sm">ปลดล็อกเพื่อบันทึก</button>
+          </div>
+        </form>
+      `);
+      setTimeout(() => { const el = document.getElementById('pin-verify-input'); if (el) el.focus(); }, 60);
+    }
+
+    function verifyMemberPinSubmit(e) {
+      e.preventDefault();
+      const input = (document.getElementById('pin-verify-input').value || '').trim();
+      const m = getMemberById(_pendingPinMemberId);
+      if (m && input === String(m.pin)) {
+        ui.unlockedMemberId = m.id;
+        const cb = _pendingPinCallback;
+        _pendingPinCallback = null;
+        _pendingPinMemberId = null;
+        closeModal();
+        showToast(`ปลดล็อกบัญชี ${m.name} แล้ว`);
+        if (cb) cb();
+      } else {
+        const err = document.getElementById('pin-verify-error');
+        if (err) err.classList.remove('hidden');
+        const inp = document.getElementById('pin-verify-input');
+        if (inp) { inp.value = ''; inp.focus(); }
+      }
+    }
+
+    function lockActiveAccount() {
+      ui.unlockedMemberId = null;
+      renderAll();
+      showToast('ล็อกบัญชีแล้ว ครั้งถัดไปจะต้องใส่ PIN ก่อนบันทึก');
+    }
+
+    function openPinSettingsModal(targetMemberId) {
+      const m = getMemberById(targetMemberId || state.activeMemberId);
+      const hasPin = !!m.pin;
+      openModal(`ตั้งรหัส PIN — ${m.name}`, `
+        <form onsubmit="saveMemberPinForm(event, '${m.id}')" class="space-y-4">
+          <p class="text-xs leading-relaxed" style="color: var(--text-muted);">
+            ตั้งรหัส PIN 4 หลักสำหรับบัญชี <strong class="text-white">${escapeHtml(m.name)}</strong> เพื่อป้องกันการลงรายการผิดคนเวลาสลับบัญชีหรือเข้าบันทึก
+          </p>
+          ${hasPin ? `
+          <div>
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">รหัส PIN เดิม (4 หลัก)</label>
+            <input type="password" id="pin-old-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" required class="w-full px-4 py-2.5 text-lg tracking-[0.4em] text-center num">
+          </div>` : ''}
+          <div>
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">${hasPin ? 'รหัส PIN ใหม่ (4 หลัก)' : 'ตั้งรหัส PIN (4 หลัก)'}</label>
+            <input type="password" id="pin-new-input" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="เช่น 1234" required class="w-full px-4 py-2.5 text-lg tracking-[0.4em] text-center num">
+          </div>
+          <p id="pin-set-error" class="hidden text-xs text-rose-400 text-center"></p>
+          <div class="flex gap-2">
+            ${hasPin ? `<button type="button" onclick="removeMemberPin('${m.id}')" class="px-4 py-3 rounded-2xl bg-rose-500/20 text-rose-300 text-xs font-semibold">ยกเลิก PIN</button>` : ''}
+            <button type="submit" class="flex-1 py-3 rounded-2xl btn-accent text-sm">บันทึกรหัส PIN</button>
+          </div>
+        </form>
+      `);
+    }
+
+    function saveMemberPinForm(e, memberId) {
+      e.preventDefault();
+      const m = state.members.find(x => x.id === memberId);
+      if (!m) return;
+      const errEl = document.getElementById('pin-set-error');
+      if (m.pin) {
+        const oldPin = (document.getElementById('pin-old-input').value || '').trim();
+        if (oldPin !== String(m.pin)) {
+          errEl.textContent = 'รหัส PIN เดิมไม่ถูกต้อง';
+          errEl.classList.remove('hidden');
+          return;
+        }
+      }
+      const newPin = (document.getElementById('pin-new-input').value || '').trim();
+      if (!/^[0-9]{4}$/.test(newPin)) {
+        errEl.textContent = 'กรุณากรอกตัวเลข 4 หลักเท่านั้น';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      m.pin = newPin;
+      ui.unlockedMemberId = m.id;
+      saveState();
+      closeModal();
+      renderAll();
+      showToast(`ตั้งรหัส PIN สำหรับ ${m.name} เรียบร้อย`);
+    }
+
+    function removeMemberPin(memberId) {
+      const m = state.members.find(x => x.id === memberId);
+      if (!m) return;
+      const errEl = document.getElementById('pin-set-error');
+      const oldInput = document.getElementById('pin-old-input');
+      if (m.pin && oldInput && oldInput.value.trim() !== String(m.pin)) {
+        errEl.textContent = 'กรุณากรอกรหัส PIN เดิมก่อนยกเลิก';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      m.pin = '';
+      saveState();
+      closeModal();
+      renderAll();
+      showToast(`ยกเลิกรหัส PIN ของ ${m.name} แล้ว`);
+    }
+
     function getActiveMonthlySalary(scope) {
       return state.salaryHistory
         .filter(s => s.active && (scope === 'all' || s.memberId === scope))
@@ -891,8 +1067,9 @@
       const totalIncome = Math.max(baseSalary, loggedSalary) + extraIncome;
 
       const totalSpent = monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
-      const unpaidBills = state.bills.filter(b => !(b.paidMonths || []).includes(state.activeMonth));
-      const unpaidBillsSum = scope === 'all' ? unpaidBills.reduce((s, b) => s + Number(b.amount), 0) : 0;
+      const scopedBills = getBillsForScope(scope);
+      const unpaidBills = scopedBills.filter(b => !(b.paidMonths || []).includes(state.activeMonth));
+      const unpaidBillsSum = unpaidBills.reduce((s, b) => s + Number(b.amount), 0);
       const reservedSavings = scope === 'all' ? (Number(state.monthlySavingsGoal) || 0) : Math.round((Number(state.monthlySavingsGoal) || 0) / Math.max(1, state.members.length));
 
       // Mhdu exact formula: เงินเดือน + รายรับเสริม - ใช้ไปแล้ว - บิลที่ยังไม่ตัด - เงินออม = เหลือใช้
@@ -1190,12 +1367,30 @@
       renderCalendarTab();
     }
 
+    function setCalScope(scope) {
+      ui.calScope = scope;
+      renderCalendarTab();
+    }
+
     function renderCalendarTab() {
       const ym = state.activeMonth;
       const [yearStr, monthStr] = ym.split('-');
       const year = parseInt(yearStr, 10);
       const monthIdx = parseInt(monthStr, 10) - 1;
-      const monthTxs = getMonthTransactions(ym, 'all');
+      const calScope = ui.calScope || state.activeMemberId;
+
+      // Render Calendar Scope Selector Pills
+      const scopeBar = document.getElementById('cal-scope-bar');
+      if (scopeBar) {
+        const pills = state.members.map(m => {
+          const active = calScope === m.id;
+          return `<button type="button" onclick="setCalScope('${m.id}')" class="px-3 py-1.5 rounded-full text-xs font-medium shrink-0 transition ${active ? 'pill-active' : 'pill-inactive'}">${escapeHtml(m.name)}${m.id === state.activeMemberId ? ' (ฉัน)' : ''}</button>`;
+        });
+        pills.push(`<button type="button" onclick="setCalScope('all')" class="px-3 py-1.5 rounded-full text-xs font-medium shrink-0 transition ${calScope === 'all' ? 'pill-active' : 'pill-inactive'}">ทั้งบ้าน</button>`);
+        scopeBar.innerHTML = pills.join('');
+      }
+
+      const monthTxs = getMonthTransactions(ym, calScope);
       const expTxs = monthTxs.filter(t => t.type === 'expense');
       const incTxs = monthTxs.filter(t => t.type === 'income');
 
@@ -1213,8 +1408,9 @@
         dayTotals[d] = (dayTotals[d] || 0) + Number(t.amount);
       });
 
+      const scopedBills = getBillsForScope(calScope);
       const unpaidBillDays = new Set(
-        state.bills.filter(b => !(b.paidMonths || []).includes(ym)).map(b => Number(b.dueDay))
+        scopedBills.filter(b => !(b.paidMonths || []).includes(ym)).map(b => Number(b.dueDay))
       );
 
       const firstDayOfWeek = new Date(year, monthIdx, 1).getDay();
@@ -1254,10 +1450,10 @@
       document.getElementById('cal-month-total-label').textContent = ui.calType === 'expense' ? 'รายจ่ายเดือนนี้' : 'รายรับเดือนนี้';
       document.getElementById('cal-month-total-val').textContent = (ui.calType === 'income' && state.hideIncome) ? '฿•••••' : `฿${fmtMoney(monthSum)}`;
 
-      // Render Recurring Bills
-      const unpaidBills = state.bills.filter(b => !(b.paidMonths || []).includes(ym));
-      const paidBills = state.bills.filter(b => (b.paidMonths || []).includes(ym));
-      const totalBillsAmt = state.bills.reduce((s, b) => s + Number(b.amount), 0);
+      // Render Recurring Bills (Scoped per person or All)
+      const unpaidBills = scopedBills.filter(b => !(b.paidMonths || []).includes(ym));
+      const paidBills = scopedBills.filter(b => (b.paidMonths || []).includes(ym));
+      const totalBillsAmt = scopedBills.reduce((s, b) => s + Number(b.amount), 0);
       document.getElementById('bills-monthly-total').textContent = `฿${fmtMoney(totalBillsAmt)}`;
 
       const bUnpaidBtn = document.getElementById('bill-tab-unpaid');
@@ -1271,7 +1467,7 @@
       const todayDay = new Date().getDate();
       const billsEl = document.getElementById('bills-list');
 
-      const activeInstallments = state.bills.map(b => getInstallmentInfo(b, ym)).filter(Boolean);
+      const activeInstallments = scopedBills.map(b => getInstallmentInfo(b, ym)).filter(Boolean);
       const totalRemDebt = activeInstallments.reduce((s, info) => s + info.remainingBalance, 0);
       const instSummaryBanner = activeInstallments.length > 0 ? `
         <div class="p-3 rounded-2xl mb-2.5 flex items-center justify-between gap-2" style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.22);">
@@ -1320,7 +1516,7 @@
                   </div>
                   <div class="min-w-0">
                     <p class="text-xs font-semibold truncate">${escapeHtml(b.name)}</p>
-                    <p class="text-[11px] num truncate" style="color: var(--text-muted);">${b.variable ? '~' : ''}฿${fmtMoney(b.amount)} · ${escapeHtml(cat.name)}${b.autoPay ? ' · ตัดอัตโนมัติ' : ''}</p>
+                    <p class="text-[11px] num truncate" style="color: var(--text-muted);">${b.variable ? '~' : ''}฿${fmtMoney(b.amount)} · ${escapeHtml(cat.name)}${calScope === 'all' ? ' · ' + escapeHtml(getBillOwnerLabel(b)) : ''}${b.autoPay ? ' · ตัดอัตโนมัติ' : ''}</p>
                   </div>
                 </button>
                 <div class="flex items-center gap-2 shrink-0">
@@ -1338,6 +1534,10 @@
     }
 
     function toggleBillPaid(billId) {
+      requireMemberPin(state.activeMemberId, () => _doToggleBillPaid(billId));
+    }
+
+    function _doToggleBillPaid(billId) {
       const bill = state.bills.find(b => b.id === billId);
       if (!bill) return;
       const ym = state.activeMonth;
@@ -1393,7 +1593,7 @@
         type: 'expense',
         amount: Number(actualAmount),
         categoryId: (state.categories.some(c => c.id === bill.categoryId) ? bill.categoryId : ((state.categories.find(c => c.type === 'expense') || {}).id || 'c_other')),
-        memberId: state.activeMemberId,
+        memberId: (getBillOwnerId(bill) !== 'shared' ? getBillOwnerId(bill) : state.activeMemberId),
         note: bill.name,
         billId: bill.id
       });
@@ -1513,6 +1713,39 @@
         breakEl.innerHTML = '';
       }
 
+      // Per-person Debt & Recurring Bills Breakdown (คนละก้อนชัดเจน)
+      const debtEl = document.getElementById('family-debt-breakdown');
+      if (debtEl) {
+        const groups = [
+          ...state.members.map(m => ({ id: m.id, name: m.name, initial: m.initial || m.name.charAt(0), color: m.color })),
+          { id: 'shared', name: 'กองกลางบ้าน', initial: 'บ', color: '#94A3B8' }
+        ];
+        const rows = groups.map(g => {
+          const gBills = state.bills.filter(b => getBillOwnerId(b) === g.id);
+          if (g.id === 'shared' && gBills.length === 0) return '';
+          const monthlySum = gBills.reduce((s, b) => s + Number(b.amount), 0);
+          const unpaidSum = gBills.filter(b => !(b.paidMonths || []).includes(ym)).reduce((s, b) => s + Number(b.amount), 0);
+          const remInst = gBills.map(b => getInstallmentInfo(b, ym)).filter(Boolean).reduce((s, i) => s + i.remainingBalance, 0);
+          return `
+            <button type="button" onclick="setCalScope('${g.id === 'shared' ? 'all' : g.id}'); switchTab('calendar')" class="w-full p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] text-left transition">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style="background:${g.color}25; color:${g.color}; border:1px solid ${g.color};">${escapeHtml(g.initial)}</span>
+                  <div>
+                    <p class="text-xs font-semibold">หนี้/บิลของ ${escapeHtml(g.name)} (${gBills.length} รายการ)</p>
+                    <p class="text-[11px]" style="color: var(--text-muted);">ค้างจ่ายเดือนนี้ ฿${fmtMoney(unpaidSum)}${remInst > 0 ? ' · ยอดผ่อนคงเหลือ ฿' + fmtMoney(remInst) : ''}</p>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-sm font-bold num" style="color: var(--accent);">฿${fmtMoney(monthlySum)}</p>
+                  <p class="text-[10px]" style="color: var(--text-muted);">ต่อเดือน</p>
+                </div>
+              </div>
+            </button>`;
+        }).filter(Boolean).join('');
+        debtEl.innerHTML = rows || `<p class="text-xs text-center py-3" style="color: var(--text-muted);">ยังไม่มีรายการบิลหรือหนี้</p>`;
+      }
+
       // Annual Bar Chart
       document.getElementById('fam-bar-exp').className = `px-2.5 py-1 rounded-lg text-[11px] font-semibold ${ui.familyChartType === 'expense' ? 'pill-active' : 'pill-inactive'}`;
       document.getElementById('fam-bar-inc').className = `px-2.5 py-1 rounded-lg text-[11px] font-semibold ${ui.familyChartType === 'income' ? 'pill-active' : 'pill-inactive'}`;
@@ -1590,11 +1823,21 @@
       document.getElementById('me-name').textContent = m.name;
       document.getElementById('me-role').textContent = `${m.role || 'สมาชิก'} · ${state.familyName}`;
 
-      const activeSal = getActiveMonthlySalary('all');
+      const pinStatusEl = document.getElementById('me-pin-status');
+      const lockBtn = document.getElementById('btn-lock-session');
+      if (pinStatusEl) {
+        pinStatusEl.textContent = m.pin
+          ? (ui.unlockedMemberId === m.id ? '🔓 ตั้งรหัส PIN แล้ว (ปลดล็อกอยู่)' : '🔒 ตั้งรหัส PIN แล้ว (ต้องใส่รหัสก่อนบันทึก)')
+          : 'ยังไม่ตั้งรหัส PIN สำหรับเข้าบันทึก';
+      }
+      if (lockBtn) lockBtn.classList.toggle('hidden', !(m.pin && ui.unlockedMemberId === m.id));
+
+      const activeSal = getActiveMonthlySalary(state.activeMemberId);
       document.getElementById('me-salary-sub').textContent = state.hideIncome
         ? `฿••••• · ทุกวันที่ ${state.payday}`
-        : `฿${fmtMoney(activeSal)}/เดือน · ทุกวันที่ ${state.payday}${state.paydayShiftWeekend ? ' · เลื่อนก่อนวันหยุด' : ''}`;
-      document.getElementById('me-bills-sub').textContent = `${state.bills.length} รายการ · เฉลี่ย ฿${fmtMoney(state.bills.reduce((s,b)=>s+Number(b.amount),0))}/เดือน`;
+        : `ของ${m.name}: ฿${fmtMoney(activeSal)}/เดือน · ทุกวันที่ ${state.payday}`;
+      const myBills = getBillsForScope(state.activeMemberId);
+      document.getElementById('me-bills-sub').textContent = `ของ${m.name}: ${myBills.length} รายการ · ฿${fmtMoney(myBills.reduce((s,b)=>s+Number(b.amount),0))}/เดือน`;
       document.getElementById('me-savings-sub').textContent = state.monthlySavingsGoal > 0 ? `฿${fmtMoney(state.monthlySavingsGoal)} · ทุกวันที่ ${state.payday}` : 'หยุดออมชั่วคราว (฿0)';
 
       const expCats = state.categories.filter(c => c.type === 'expense').length;
@@ -1627,10 +1870,15 @@
     // MODALS: ADD TRANSACTION
     // =========================================================================
     function openTxModal(prefillDate) {
-      const dateVal = prefillDate || getTodayISO();
-      const memberOpts = state.members.map(m => `<option value="${m.id}" ${m.id === state.activeMemberId ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('');
+      requireMemberPin(state.activeMemberId, () => _openTxModalUnlocked(prefillDate));
+    }
 
-      openModal('บันทึกรายการใหม่', `
+    function _openTxModalUnlocked(prefillDate) {
+      const dateVal = prefillDate || getTodayISO();
+      const activeM = getMemberById(state.activeMemberId);
+      const memberOpts = `<option value="${activeM.id}" selected>${escapeHtml(activeM.name)} (บัญชีที่ล็อกอินอยู่)</option>`;
+
+      openModal(`บันทึกรายการ — ${activeM.name}`, `
         <form onsubmit="submitTransaction(event)" class="space-y-4">
           <div class="grid grid-cols-3 p-1 rounded-xl" style="background: var(--bg-base);">
             <button type="button" id="tx-type-expense" onclick="setTxModalType('expense')" class="py-2 rounded-lg text-xs font-semibold pill-active">รายจ่าย</button>
@@ -1748,6 +1996,10 @@
     }
 
     function openEditTxModal(txId) {
+      requireMemberPin(state.activeMemberId, () => _openEditTxModalUnlocked(txId));
+    }
+
+    function _openEditTxModalUnlocked(txId) {
       const tx = state.transactions.find(t => t.id === txId);
       if (!tx) return;
       const memberOpts = state.members.map(m => `<option value="${m.id}" ${m.id === tx.memberId ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('');
@@ -1896,26 +2148,43 @@
       state.activeMonth = date.slice(0, 7);
       saveState();
       closeModal();
+      const localPref = loadLocalActiveMember();
+      if (localPref && state.members.some(m => m.id === localPref.memberId)) {
+        state.activeMemberId = localPref.memberId;
+        state.homeScope = localPref.scope || localPref.memberId;
+        ui.calScope = localPref.memberId;
+      } else {
+        ui.calScope = state.activeMemberId;
+      }
       populateMonthSelectors();
       renderAll();
       showToast('บันทึกรายการเรียบร้อย');
     }
 
     function deleteTransaction(id) {
-      state.transactions = state.transactions.filter(t => t.id !== id);
-      saveState();
-      renderAll();
-      showToast('ลบรายการแล้ว');
+      requireMemberPin(state.activeMemberId, () => {
+        state.transactions = state.transactions.filter(t => t.id !== id);
+        saveState();
+        renderAll();
+        showToast('ลบรายการแล้ว');
+      });
     }
 
     // =========================================================================
     // MODALS: BILLS, SALARY HISTORY, SAVINGS, CATEGORIES, MEMBERS
     // =========================================================================
     function openBillModal(editId) {
+      requireMemberPin(state.activeMemberId, () => _openBillModalUnlocked(editId));
+    }
+
+    function _openBillModalUnlocked(editId) {
       const b = editId ? state.bills.find(x => x.id === editId) : null;
       const expCats = state.categories.filter(c => c.type === 'expense');
       const currentCatId = (b && expCats.some(c => c.id === b.categoryId)) ? b.categoryId : (expCats[0] ? expCats[0].id : '');
       const catOpts = expCats.map(c => `<option value="${c.id}" ${c.id === currentCatId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+      const currentOwnerId = b ? getBillOwnerId(b) : state.activeMemberId;
+      const ownerOpts = state.members.map(m => `<option value="${m.id}" ${m.id === currentOwnerId ? 'selected' : ''}>หนี้/บิลของ ${escapeHtml(m.name)}</option>`).join('')
+        + `<option value="shared" ${currentOwnerId === 'shared' ? 'selected' : ''}>กองกลางบ้าน (แชร์ร่วมกัน)</option>`;
       const isInst = !!(b && b.isInstallment);
 
       openModal(b ? 'แก้ไขบิลประจำ / ผ่อนชำระ' : 'เพิ่มบิลประจำ / ผ่อนชำระ', `
@@ -1923,6 +2192,11 @@
           <div>
             <label class="text-xs block mb-1" style="color: var(--text-muted);">ชื่อบิล / รายการผ่อน</label>
             <input type="text" id="bill-name" value="${b ? escapeHtml(b.name) : ''}" placeholder="เช่น ค่าไฟ, ผ่อนกล้อง Canon R8, ค่าเน็ต" required class="w-full px-3.5 py-2.5 text-sm">
+          </div>
+
+          <div>
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">เจ้าของหนี้ / บิลนี้</label>
+            <select id="bill-member" class="w-full px-3 py-2.5 text-xs">${ownerOpts}</select>
           </div>
 
           <div>
@@ -2024,6 +2298,7 @@
       const dueDay = parseInt(document.getElementById('bill-day').value, 10) || 15;
       const variable = document.getElementById('bill-var').checked;
       const autoPay = document.getElementById('bill-auto').checked;
+      const memberId = document.getElementById('bill-member').value || state.activeMemberId;
       const categoryId = document.getElementById('bill-cat').value || (state.categories.find(c => c.type === 'expense') || {}).id || 'c_other';
       const catObj = getCategoryById(categoryId);
       const isInstallment = document.getElementById('bill-installment').checked;
@@ -2033,16 +2308,19 @@
       if (editId) {
         const b = state.bills.find(x => x.id === editId);
         if (b) {
-          Object.assign(b, { name, amount, dueDay, variable, autoPay, categoryId, icon: catObj.icon || 'receipt', isInstallment, totalAmount, startMonth });
-          // Update past transactions tied to this bill so they reflect the new category immediately
+          Object.assign(b, { name, amount, dueDay, variable, autoPay, memberId, categoryId, icon: catObj.icon || 'receipt', isInstallment, totalAmount, startMonth });
           state.transactions.forEach(tx => {
-            if (tx.billId === editId) tx.categoryId = categoryId;
+            if (tx.billId === editId) {
+              tx.categoryId = categoryId;
+              if (memberId !== 'shared') tx.memberId = memberId;
+            }
           });
         }
       } else {
         state.bills.push({
           id: 'b_' + Date.now(),
           name, amount, dueDay, variable, autoPay,
+          memberId,
           icon: catObj.icon || 'receipt',
           categoryId,
           isInstallment, totalAmount, startMonth,
@@ -2260,7 +2538,7 @@
             <div class="flex items-center gap-2.5">
               <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style="background:${m.color}25; color:${m.color};">${escapeHtml(m.initial)}</div>
               <div>
-                <p class="text-xs font-semibold">${escapeHtml(m.name)}</p>
+                <p class="text-xs font-semibold">${escapeHtml(m.name)} ${m.pin ? '<span class="text-[10px] text-sky-300">🔒</span>' : ''}</p>
                 <p class="text-[10px]" style="color:var(--text-muted);">${m.id === state.activeMemberId ? 'บัญชีที่ใช้งานอยู่' : escapeHtml(m.role)}</p>
               </div>
             </div>
@@ -2275,17 +2553,30 @@
 
     function setHomeScope(scope) {
       state.homeScope = scope;
+      saveLocalActiveMember(state.activeMemberId, scope);
       saveState(true);
       closeModal();
       renderAll();
     }
 
     function switchActiveMember(id) {
-      state.activeMemberId = id;
-      saveState(true);
-      closeModal();
-      renderAll();
-      showToast(`สลับเป็นผู้ใช้งาน: ${getMemberById(id).name}`);
+      const applySwitch = () => {
+        state.activeMemberId = id;
+        state.homeScope = id;
+        ui.calScope = id;
+        saveLocalActiveMember(id, id);
+        saveState(true);
+        closeModal();
+        renderAll();
+        showToast(`สลับบัญชีเป็น ${getMemberById(id).name} (แสดงค่าใช้จ่ายของ${getMemberById(id).name})`);
+      };
+      const target = getMemberById(id);
+      if (target && target.pin && ui.unlockedMemberId !== id) {
+        closeModal();
+        requireMemberPin(id, applySwitch);
+      } else {
+        applySwitch();
+      }
     }
 
     function openAddMemberModal() {
@@ -2296,7 +2587,10 @@
               <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style="background:${m.color}25; color:${m.color};">${escapeHtml(m.initial)}</span>
               <span class="text-xs font-semibold">${escapeHtml(m.name)}</span>
             </div>
-            ${state.members.length > 1 ? `<button type="button" onclick="removeMember('${m.id}')" class="text-[11px] text-rose-400">ลบ</button>` : ''}
+            <div class="flex items-center gap-2.5">
+              <button type="button" onclick="openPinSettingsModal('${m.id}')" class="text-[11px] text-sky-300">${m.pin ? '🔒 แก้ PIN' : '+ ตั้ง PIN'}</button>
+              ${state.members.length > 1 ? `<button type="button" onclick="removeMember('${m.id}')" class="text-[11px] text-rose-400">ลบ</button>` : ''}
+            </div>
           </div>
           <div class="flex items-center justify-between text-[11px]" style="color:var(--text-muted);">
             <label class="flex items-center gap-1.5"><input type="checkbox" ${m.shareDetails ? 'checked' : ''} onchange="toggleMemberPrivacy('${m.id}','shareDetails',this.checked)" class="accent-emerald-400"> แชร์รายละเอียดรายการ</label>
@@ -2564,7 +2858,13 @@
         const res = await fetch(`${url}?action=getState`, { method: 'GET' });
         const json = await res.json();
         if (json && json.status === 'ok' && json.data && json.data.transactions) {
+          const localPref = loadLocalActiveMember();
           state = Object.assign(getDefaultState(), json.data);
+          if (localPref && state.members.some(m => m.id === localPref.memberId)) {
+            state.activeMemberId = localPref.memberId;
+            state.homeScope = localPref.scope || localPref.memberId;
+            ui.calScope = localPref.memberId;
+          }
           saveState(true);
           populateMonthSelectors();
           renderAll();
