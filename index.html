@@ -733,6 +733,35 @@
       return `${THAI_MONTHS_SHORT[m]} ${String(y).slice(-2)}`;
     }
 
+    function diffMonthsYM(startYm, endYm) {
+      const [sy, sm] = (startYm || '2026-01').split('-').map(Number);
+      const [ey, em] = (endYm || '2026-01').split('-').map(Number);
+      return (ey - sy) * 12 + (em - sm);
+    }
+
+    function addMonthsYM(ym, add) {
+      const [y, m] = (ym || '2026-01').split('-').map(Number);
+      const d = new Date(y, (m - 1) + add, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function getInstallmentInfo(bill, activeYm) {
+      if (!bill || !bill.isInstallment) return null;
+      const totalAmount = Number(bill.totalAmount) || 0;
+      const monthly = Number(bill.amount) || 0;
+      if (totalAmount <= 0 || monthly <= 0) return null;
+      const totalInstallments = Math.max(1, Math.ceil(totalAmount / monthly));
+      const startMonth = bill.startMonth || activeYm;
+      const isPaidThisMonth = (bill.paidMonths || []).includes(activeYm);
+      const monthsBefore = Math.max(0, diffMonthsYM(startMonth, activeYm));
+      const paidCount = Math.min(totalInstallments, monthsBefore + (isPaidThisMonth ? 1 : 0));
+      const remainingCount = Math.max(0, totalInstallments - paidCount);
+      const remainingBalance = Math.max(0, totalAmount - (paidCount * monthly));
+      const endMonth = addMonthsYM(startMonth, totalInstallments - 1);
+      const pct = Math.min(100, Math.round((paidCount / totalInstallments) * 100));
+      return { totalAmount, monthly, totalInstallments, startMonth, endMonth, paidCount, remainingCount, remainingBalance, pct };
+    }
+
     function getTodayISO() {
       const now = new Date();
       const y = now.getFullYear();
@@ -1128,7 +1157,7 @@
 
       return `
         <div class="flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.05] transition">
-          <div class="flex items-center gap-2.5 min-w-0">
+          <button type="button" onclick="openEditTxModal('${tx.id}')" class="flex items-center gap-2.5 min-w-0 flex-1 text-left">
             <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${cat.color}22; color:${cat.color};">
               <i data-lucide="${isSav ? 'piggy-bank' : cat.icon}" class="w-4 h-4"></i>
             </div>
@@ -1136,7 +1165,7 @@
               <p class="text-xs font-semibold truncate">${escapeHtml(tx.note || title)}</p>
               <p class="text-[11px] truncate" style="color: var(--text-muted);">${dayStr} · ${escapeHtml(title)} · ${escapeHtml(member.name)}</p>
             </div>
-          </div>
+          </button>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-xs font-bold num ${amtColor}">${(isInc && state.hideIncome) ? '฿••••' : sign + '฿' + fmtMoney(tx.amount)}</span>
             ${allowDelete ? `<button type="button" onclick="deleteTransaction('${tx.id}')" class="p-1 rounded-lg hover:bg-rose-500/20 text-white/40 hover:text-rose-400" aria-label="ลบรายการ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
@@ -1242,34 +1271,66 @@
       const todayDay = new Date().getDate();
       const billsEl = document.getElementById('bills-list');
 
+      const activeInstallments = state.bills.map(b => getInstallmentInfo(b, ym)).filter(Boolean);
+      const totalRemDebt = activeInstallments.reduce((s, info) => s + info.remainingBalance, 0);
+      const instSummaryBanner = activeInstallments.length > 0 ? `
+        <div class="p-3 rounded-2xl mb-2.5 flex items-center justify-between gap-2" style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.22);">
+          <div class="text-[11px]">
+            <p class="font-semibold text-sky-300">ยอดผ่อนชำระคงเหลือรวม (${activeInstallments.length} รายการ)</p>
+            <p style="color: var(--text-muted);">แตะที่ชื่อบิลเพื่อดู/ตั้งค่ายอดผ่อนทั้งหมด</p>
+          </div>
+          <span class="text-sm font-bold num text-sky-300 shrink-0">฿${fmtMoney(totalRemDebt)}</span>
+        </div>` : '';
+
       if (!listToShow.length) {
-        billsEl.innerHTML = `<p class="text-xs text-center py-4" style="color: var(--text-muted);">${ui.billFilter === 'unpaid' ? 'เยี่ยมมาก! ไม่มีบิลค้างชำระในเดือนนี้' : 'ยังไม่มีบิลที่ชำระแล้วในเดือนนี้'}</p>`;
+        billsEl.innerHTML = instSummaryBanner + `<p class="text-xs text-center py-4" style="color: var(--text-muted);">${ui.billFilter === 'unpaid' ? 'เยี่ยมมาก! ไม่มีบิลค้างชำระในเดือนนี้' : 'ยังไม่มีบิลที่ชำระแล้วในเดือนนี้'}</p>`;
       } else {
-        billsEl.innerHTML = listToShow.map(b => {
+        billsEl.innerHTML = instSummaryBanner + listToShow.map(b => {
           const isPaid = (b.paidMonths || []).includes(ym);
           const isOverdue = !isPaid && ym === getTodayISO().slice(0, 7) && Number(b.dueDay) < todayDay;
           const statusBtnClass = isPaid
             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
             : (isOverdue ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-emerald-900/80 text-emerald-200 border border-emerald-500/30');
           const statusLabel = isPaid ? 'ตัดแล้ว' : (isOverdue ? '🔥 ค้างชำระ' : 'ค้างชำระ');
+          const cat = getCategoryById(b.categoryId);
+          const inst = getInstallmentInfo(b, ym);
+          const instHtml = inst ? `
+            <div class="mt-2.5 pt-2.5 border-t border-white/5">
+              <div class="flex items-center justify-between text-[11px] mb-1">
+                <span class="${inst.remainingCount === 0 ? 'text-emerald-300 font-semibold' : 'text-sky-300 font-medium'}">
+                  ${inst.remainingCount === 0 ? `🎉 ผ่อนครบ ${inst.totalInstallments}/${inst.totalInstallments} งวดแล้ว!` : `ผ่อนแล้ว ${inst.paidCount}/${inst.totalInstallments} งวด · เหลืออีก ${inst.remainingCount} งวด`}
+                </span>
+                <span class="num text-[10px]" style="color: var(--text-muted);">คงเหลือ ฿${fmtMoney(inst.remainingBalance)}</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div class="h-full rounded-full" style="width:${inst.pct}%; background:${inst.remainingCount === 0 ? '#4ADE80' : '#38BDF8'};"></div>
+              </div>
+              <div class="flex items-center justify-between text-[10px] mt-1" style="color: var(--text-muted);">
+                <span>ยอดรวม ฿${fmtMoney(inst.totalAmount)} · เริ่ม ${formatMonthThai(inst.startMonth)}</span>
+                <span>หมด ${formatMonthThai(inst.endMonth)}</span>
+              </div>
+            </div>` : '';
 
           return `
-            <div class="flex items-center justify-between gap-2 p-3 rounded-2xl bg-white/[0.03]">
-              <button type="button" onclick="openBillModal('${b.id}')" class="flex items-center gap-3 min-w-0 text-left flex-1">
-                <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background: var(--bg-elevated); color: var(--accent);">
-                  <i data-lucide="${b.icon || 'receipt'}" class="w-4 h-4"></i>
-                </div>
-                <div class="min-w-0">
-                  <p class="text-xs font-semibold truncate">${escapeHtml(b.name)}</p>
-                  <p class="text-[11px] num" style="color: var(--text-muted);">${b.variable ? '~' : ''}฿${fmtMoney(b.amount)}${b.autoPay ? ' · ตัดอัตโนมัติ' : ''}</p>
-                </div>
-              </button>
-              <div class="flex items-center gap-2 shrink-0">
-                <span class="text-[11px] px-2 py-1 rounded-lg bg-white/5 num" style="color: var(--text-muted);">วันที่ ${b.dueDay}</span>
-                <button type="button" onclick="toggleBillPaid('${b.id}')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition ${statusBtnClass}">
-                  ${statusLabel}
+            <div class="p-3 rounded-2xl bg-white/[0.03]">
+              <div class="flex items-center justify-between gap-2">
+                <button type="button" onclick="openBillModal('${b.id}')" class="flex items-center gap-3 min-w-0 text-left flex-1">
+                  <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${cat.color}22; color:${cat.color};">
+                    <i data-lucide="${cat.icon || b.icon || 'receipt'}" class="w-4 h-4"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold truncate">${escapeHtml(b.name)}</p>
+                    <p class="text-[11px] num truncate" style="color: var(--text-muted);">${b.variable ? '~' : ''}฿${fmtMoney(b.amount)} · ${escapeHtml(cat.name)}${b.autoPay ? ' · ตัดอัตโนมัติ' : ''}</p>
+                  </div>
                 </button>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="text-[11px] px-2 py-1 rounded-lg bg-white/5 num" style="color: var(--text-muted);">วันที่ ${b.dueDay}</span>
+                  <button type="button" onclick="toggleBillPaid('${b.id}')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition ${statusBtnClass}">
+                    ${statusLabel}
+                  </button>
+                </div>
               </div>
+              ${instHtml}
             </div>`;
         }).join('');
       }
@@ -1331,7 +1392,7 @@
         date: `${ym}-${dayStr}`,
         type: 'expense',
         amount: Number(actualAmount),
-        categoryId: bill.categoryId || 'c_bill',
+        categoryId: (state.categories.some(c => c.id === bill.categoryId) ? bill.categoryId : ((state.categories.find(c => c.type === 'expense') || {}).id || 'c_other')),
         memberId: state.activeMemberId,
         note: bill.name,
         billId: bill.id
@@ -1634,7 +1695,7 @@
     }
 
     function renderTxModalCats(cats, selectedId) {
-      document.getElementById('tx-cat-grid').innerHTML = cats.map(c => {
+      const catBtns = cats.map(c => {
         const isSel = c.id === selectedId;
         return `
           <button type="button" onclick="selectTxCat('${c.id}')" class="p-2 rounded-xl flex flex-col items-center gap-1 transition ${isSel ? 'ring-2 ring-emerald-400 bg-emerald-500/15' : 'bg-white/[0.04]'}">
@@ -1642,7 +1703,141 @@
             <span class="text-[10px] truncate w-full text-center">${escapeHtml(c.name)}</span>
           </button>`;
       }).join('');
+      const addBtn = `
+        <button type="button" onclick="toggleQuickAddTxCat()" class="p-2 rounded-xl flex flex-col items-center justify-center gap-1 bg-white/[0.03] border border-dashed border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span class="text-[10px]">เพิ่มหมวด</span>
+        </button>`;
+      document.getElementById('tx-cat-grid').innerHTML = catBtns + addBtn;
       lucide.createIcons();
+    }
+
+    function toggleQuickAddTxCat() {
+      let box = document.getElementById('tx-quick-cat-box');
+      if (!box) {
+        const sec = document.getElementById('tx-cat-section');
+        box = document.createElement('div');
+        box.id = 'tx-quick-cat-box';
+        box.className = 'mt-2 flex gap-2';
+        box.innerHTML = `
+          <input type="text" id="tx-quick-cat-name" placeholder="ชื่อหมวดใหม่ เช่น ผ่อนของ, ค่าน้ำมัน" class="flex-1 px-3 py-2 text-xs">
+          <button type="button" onclick="saveQuickAddTxCat()" class="px-3.5 py-2 rounded-xl btn-accent text-xs shrink-0">เพิ่ม</button>`;
+        sec.appendChild(box);
+      } else {
+        box.classList.toggle('hidden');
+      }
+      const inp = document.getElementById('tx-quick-cat-name');
+      if (inp && !box.classList.contains('hidden')) inp.focus();
+    }
+
+    function saveQuickAddTxCat() {
+      const inp = document.getElementById('tx-quick-cat-name');
+      const name = (inp ? inp.value : '').trim();
+      if (!name) return;
+      const type = document.getElementById('tx-type-val').value === 'income' ? 'income' : 'expense';
+      const color = CAT_COLORS[state.categories.length % CAT_COLORS.length];
+      const newCat = { id: 'c_' + Date.now(), name, type, icon: type === 'income' ? 'coins' : 'tag', budget: 0, color };
+      state.categories.push(newCat);
+      saveState();
+      if (inp) inp.value = '';
+      const box = document.getElementById('tx-quick-cat-box');
+      if (box) box.classList.add('hidden');
+      document.getElementById('tx-cat-val').value = newCat.id;
+      renderTxModalCats(state.categories.filter(c => c.type === type), newCat.id);
+      showToast(`เพิ่มหมวด "${name}" แล้ว`);
+    }
+
+    function openEditTxModal(txId) {
+      const tx = state.transactions.find(t => t.id === txId);
+      if (!tx) return;
+      const memberOpts = state.members.map(m => `<option value="${m.id}" ${m.id === tx.memberId ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('');
+      const cats = state.categories.filter(c => c.type === (tx.type === 'income' ? 'income' : 'expense'));
+      const catOpts = cats.map(c => `<option value="${c.id}" ${c.id === tx.categoryId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+
+      openModal('แก้ไขรายการ', `
+        <form onsubmit="saveEditTxForm(event, '${tx.id}')" class="space-y-3.5">
+          <div>
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">จำนวนเงิน (บาท)</label>
+            <input type="number" id="etx-amount" value="${tx.amount}" min="1" step="any" required class="w-full px-3.5 py-2.5 text-lg font-bold num">
+          </div>
+          ${tx.type !== 'saving' ? `
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs" style="color: var(--text-muted);">หมวดหมู่</label>
+              <button type="button" onclick="toggleQuickAddCatInSelect('etx-cat', '${tx.type === 'income' ? 'income' : 'expense'}')" class="text-[11px] font-medium" style="color: var(--accent);">+ เพิ่มหมวดใหม่</button>
+            </div>
+            <select id="etx-cat" class="w-full px-3 py-2.5 text-xs">${catOpts}</select>
+            <div id="etx-cat-quick-wrap" class="hidden mt-2 flex gap-2">
+              <input type="text" id="etx-cat-quick-inp" placeholder="พิมพ์ชื่อหมวดใหม่..." class="flex-1 px-3 py-2 text-xs">
+              <button type="button" onclick="confirmQuickAddCatInSelect('etx-cat', '${tx.type === 'income' ? 'income' : 'expense'}')" class="px-3 py-2 rounded-xl btn-accent text-xs shrink-0">เพิ่ม</button>
+            </div>
+          </div>` : ''}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs block mb-1" style="color: var(--text-muted);">สมาชิก</label>
+              <select id="etx-member" class="w-full px-3 py-2.5 text-xs">${memberOpts}</select>
+            </div>
+            <div>
+              <label class="text-xs block mb-1" style="color: var(--text-muted);">วันที่</label>
+              <input type="date" id="etx-date" value="${tx.date}" required class="w-full px-3 py-2.5 text-xs">
+            </div>
+          </div>
+          <div>
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">รายละเอียด</label>
+            <input type="text" id="etx-note" value="${escapeHtml(tx.note || '')}" class="w-full px-3.5 py-2.5 text-xs">
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button type="button" onclick="closeModal(); deleteTransaction('${tx.id}')" class="px-4 py-3 rounded-2xl bg-rose-500/20 text-rose-300 text-xs font-semibold">ลบ</button>
+            <button type="submit" class="flex-1 py-3 rounded-2xl btn-accent text-sm">บันทึกการแก้ไข</button>
+          </div>
+        </form>
+      `);
+    }
+
+    function saveEditTxForm(e, txId) {
+      e.preventDefault();
+      const tx = state.transactions.find(t => t.id === txId);
+      if (!tx) return;
+      tx.amount = parseFloat(document.getElementById('etx-amount').value) || tx.amount;
+      const catEl = document.getElementById('etx-cat');
+      if (catEl && catEl.value) tx.categoryId = catEl.value;
+      tx.memberId = document.getElementById('etx-member').value || tx.memberId;
+      tx.date = document.getElementById('etx-date').value || tx.date;
+      tx.note = document.getElementById('etx-note').value.trim();
+      saveState();
+      closeModal();
+      renderAll();
+      showToast('แก้ไขรายการเรียบร้อย');
+    }
+
+    function toggleQuickAddCatInSelect(selectId, type) {
+      const wrap = document.getElementById(selectId + '-quick-wrap');
+      if (!wrap) return;
+      wrap.classList.toggle('hidden');
+      const inp = document.getElementById(selectId + '-quick-inp');
+      if (inp && !wrap.classList.contains('hidden')) inp.focus();
+    }
+
+    function confirmQuickAddCatInSelect(selectId, type) {
+      const inp = document.getElementById(selectId + '-quick-inp');
+      const name = (inp ? inp.value : '').trim();
+      if (!name) return;
+      const color = CAT_COLORS[state.categories.length % CAT_COLORS.length];
+      const newCat = { id: 'c_' + Date.now(), name, type, icon: type === 'income' ? 'coins' : 'receipt', budget: 0, color };
+      state.categories.push(newCat);
+      saveState();
+      const sel = document.getElementById(selectId);
+      if (sel) {
+        const opt = document.createElement('option');
+        opt.value = newCat.id;
+        opt.textContent = newCat.name;
+        opt.selected = true;
+        sel.appendChild(opt);
+      }
+      if (inp) inp.value = '';
+      const wrap = document.getElementById(selectId + '-quick-wrap');
+      if (wrap) wrap.classList.add('hidden');
+      showToast(`เพิ่มหมวด "${name}" แล้ว`);
     }
 
     function selectTxCat(catId) {
@@ -1718,22 +1913,66 @@
     // =========================================================================
     function openBillModal(editId) {
       const b = editId ? state.bills.find(x => x.id === editId) : null;
-      openModal(b ? 'แก้ไขบิลประจำ' : 'เพิ่มบิลประจำ', `
+      const expCats = state.categories.filter(c => c.type === 'expense');
+      const currentCatId = (b && expCats.some(c => c.id === b.categoryId)) ? b.categoryId : (expCats[0] ? expCats[0].id : '');
+      const catOpts = expCats.map(c => `<option value="${c.id}" ${c.id === currentCatId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+      const isInst = !!(b && b.isInstallment);
+
+      openModal(b ? 'แก้ไขบิลประจำ / ผ่อนชำระ' : 'เพิ่มบิลประจำ / ผ่อนชำระ', `
         <form onsubmit="saveBillForm(event, '${editId || ''}')" class="space-y-3.5">
           <div>
-            <label class="text-xs block mb-1" style="color: var(--text-muted);">ชื่อบิล</label>
-            <input type="text" id="bill-name" value="${b ? escapeHtml(b.name) : ''}" placeholder="เช่น ค่าไฟ, ค่าเน็ต, ผ่อนรถ" required class="w-full px-3.5 py-2.5 text-sm">
+            <label class="text-xs block mb-1" style="color: var(--text-muted);">ชื่อบิล / รายการผ่อน</label>
+            <input type="text" id="bill-name" value="${b ? escapeHtml(b.name) : ''}" placeholder="เช่น ค่าไฟ, ผ่อนกล้อง Canon R8, ค่าเน็ต" required class="w-full px-3.5 py-2.5 text-sm">
           </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs" style="color: var(--text-muted);">หมวดหมู่รายจ่าย</label>
+              <button type="button" onclick="toggleQuickAddCatInSelect('bill-cat', 'expense')" class="text-[11px] font-medium" style="color: var(--accent);">+ เพิ่มหมวดหมู่ใหม่</button>
+            </div>
+            <select id="bill-cat" class="w-full px-3 py-2.5 text-xs">${catOpts}</select>
+            <div id="bill-cat-quick-wrap" class="hidden mt-2 flex gap-2">
+              <input type="text" id="bill-cat-quick-inp" placeholder="พิมพ์ชื่อหมวดใหม่ เช่น ผ่อนชำระ, บิลบ้าน" class="flex-1 px-3 py-2 text-xs">
+              <button type="button" onclick="confirmQuickAddCatInSelect('bill-cat', 'expense')" class="px-3.5 py-2 rounded-xl btn-accent text-xs shrink-0">เพิ่ม</button>
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-xs block mb-1" style="color: var(--text-muted);">ยอดต่อเดือน (บาท)</label>
-              <input type="number" id="bill-amt" value="${b ? b.amount : ''}" min="1" step="any" required class="w-full px-3.5 py-2.5 text-sm num">
+              <label class="text-xs block mb-1" style="color: var(--text-muted);">ยอดต่อเดือน/งวด (บาท)</label>
+              <input type="number" id="bill-amt" value="${b ? b.amount : ''}" min="1" step="any" required oninput="updateBillInstallmentPreview('${editId || ''}')" class="w-full px-3.5 py-2.5 text-sm num">
             </div>
             <div>
               <label class="text-xs block mb-1" style="color: var(--text-muted);">ครบกำหนดทุกวันที่</label>
-              <input type="number" id="bill-day" value="${b ? b.dueDay : 15}" min="1" max="31" required class="w-full px-3.5 py-2.5 text-sm num">
+              <input type="number" id="bill-day" value="${b ? b.dueDay : 29}" min="1" max="31" required class="w-full px-3.5 py-2.5 text-sm num">
             </div>
           </div>
+
+          <!-- Installment Section -->
+          <div class="p-3.5 rounded-2xl space-y-3" style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2);">
+            <label class="flex items-center justify-between cursor-pointer">
+              <div>
+                <p class="text-xs font-semibold text-sky-300">รายการผ่อนชำระ (มีจำนวนงวด)</p>
+                <p class="text-[10px]" style="color: var(--text-muted);">คำนวณจำนวนงวดที่เหลือและเดือนที่ผ่อนหมดให้อัตโนมัติ</p>
+              </div>
+              <input type="checkbox" id="bill-installment" ${isInst ? 'checked' : ''} onchange="toggleBillInstallmentFields('${editId || ''}')" class="w-4 h-4 accent-sky-400">
+            </label>
+
+            <div id="bill-inst-fields" class="${isInst ? '' : 'hidden'} space-y-2.5 pt-2 border-t border-white/10">
+              <div class="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label class="text-[11px] block mb-1" style="color: var(--text-muted);">ยอดที่ผ่อนทั้งหมด (บาท)</label>
+                  <input type="number" id="bill-total-amt" value="${b && b.totalAmount ? b.totalAmount : ''}" min="1" step="any" placeholder="เช่น 18520" oninput="updateBillInstallmentPreview('${editId || ''}')" class="w-full px-3 py-2 text-xs num">
+                </div>
+                <div>
+                  <label class="text-[11px] block mb-1" style="color: var(--text-muted);">เริ่มผ่อนเดือน</label>
+                  <input type="month" id="bill-start-month" value="${b && b.startMonth ? b.startMonth : state.activeMonth}" onchange="updateBillInstallmentPreview('${editId || ''}')" class="w-full px-3 py-2 text-xs">
+                </div>
+              </div>
+              <div id="bill-inst-preview" class="p-2.5 rounded-xl bg-black/25 text-[11px] text-sky-200 leading-relaxed"></div>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between p-3 rounded-xl bg-white/[0.04]">
             <span class="text-xs">ยอดไม่คงที่ (กดจ่ายแล้วค่อยกรอกยอดจริง)</span>
             <input type="checkbox" id="bill-var" ${b && b.variable ? 'checked' : ''} class="w-4 h-4 accent-emerald-400">
@@ -1748,6 +1987,34 @@
           </div>
         </form>
       `);
+      if (isInst) updateBillInstallmentPreview(editId || '');
+    }
+
+    function toggleBillInstallmentFields(editId) {
+      const checked = document.getElementById('bill-installment').checked;
+      document.getElementById('bill-inst-fields').classList.toggle('hidden', !checked);
+      if (checked) updateBillInstallmentPreview(editId);
+    }
+
+    function updateBillInstallmentPreview(editId) {
+      const preview = document.getElementById('bill-inst-preview');
+      if (!preview) return;
+      const monthly = parseFloat(document.getElementById('bill-amt').value) || 0;
+      const totalAmount = parseFloat(document.getElementById('bill-total-amt').value) || 0;
+      const startMonth = document.getElementById('bill-start-month').value || state.activeMonth;
+      if (monthly <= 0 || totalAmount <= 0) {
+        preview.textContent = 'กรอก "ยอดต่อเดือน" และ "ยอดที่ผ่อนทั้งหมด" เพื่อคำนวณจำนวนงวดที่เหลือ';
+        return;
+      }
+      const existing = editId ? state.bills.find(x => x.id === editId) : null;
+      const info = getInstallmentInfo({
+        isInstallment: true,
+        amount: monthly,
+        totalAmount,
+        startMonth,
+        paidMonths: existing ? existing.paidMonths : []
+      }, state.activeMonth);
+      preview.innerHTML = `ผ่อนทั้งหมด <strong class="text-white">${info.totalInstallments} งวด</strong> · จ่ายแล้ว <strong class="text-emerald-300">${info.paidCount} งวด</strong> · เหลืออีก <strong class="text-sky-300">${info.remainingCount} งวด</strong> (คงเหลือ ฿${fmtMoney(info.remainingBalance)})<br>คาดว่าจะผ่อนหมดเดือน <strong class="text-white">${formatMonthThai(info.endMonth)}</strong>`;
     }
 
     function saveBillForm(e, editId) {
@@ -1757,12 +2024,30 @@
       const dueDay = parseInt(document.getElementById('bill-day').value, 10) || 15;
       const variable = document.getElementById('bill-var').checked;
       const autoPay = document.getElementById('bill-auto').checked;
+      const categoryId = document.getElementById('bill-cat').value || (state.categories.find(c => c.type === 'expense') || {}).id || 'c_other';
+      const catObj = getCategoryById(categoryId);
+      const isInstallment = document.getElementById('bill-installment').checked;
+      const totalAmount = isInstallment ? (parseFloat(document.getElementById('bill-total-amt').value) || 0) : 0;
+      const startMonth = isInstallment ? (document.getElementById('bill-start-month').value || state.activeMonth) : '';
 
       if (editId) {
         const b = state.bills.find(x => x.id === editId);
-        if (b) Object.assign(b, { name, amount, dueDay, variable, autoPay });
+        if (b) {
+          Object.assign(b, { name, amount, dueDay, variable, autoPay, categoryId, icon: catObj.icon || 'receipt', isInstallment, totalAmount, startMonth });
+          // Update past transactions tied to this bill so they reflect the new category immediately
+          state.transactions.forEach(tx => {
+            if (tx.billId === editId) tx.categoryId = categoryId;
+          });
+        }
       } else {
-        state.bills.push({ id: 'b_' + Date.now(), name, amount, dueDay, variable, autoPay, icon: 'receipt', categoryId: 'c_bill', paidMonths: [] });
+        state.bills.push({
+          id: 'b_' + Date.now(),
+          name, amount, dueDay, variable, autoPay,
+          icon: catObj.icon || 'receipt',
+          categoryId,
+          isInstallment, totalAmount, startMonth,
+          paidMonths: []
+        });
       }
       saveState();
       closeModal();
