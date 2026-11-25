@@ -1,10 +1,10 @@
 {
-  "name": "บ้านเรา Budget — บันทึกรายรับรายจ่ายครอบครัว",
-  "short_name": "บ้านเรา Budget",
+  "name": "ครอบครัวมีตัง — บันทึกรายรับรายจ่ายครอบครัว",
+  "short_name": "ครอบครัวมีตัง",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0B130E",
-  "theme_color": "#0B130E",
+  "background_color": "#EFF5FF",
+  "theme_color": "#3B82F6",
   "icons": [
     {
       "src": "apple-touch-icon.png",

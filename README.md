@@ -1,4 +1,4 @@
-# บ้านเรา Budget — เว็บแอปรายรับรายจ่ายครอบครัว (GitHub Pages + Google Sheets)
+# ครอบครัวมีตัง — เว็บแอปรายรับรายจ่ายครอบครัว (GitHub Pages + Google Sheets)
 
 ## 1. อัปโหลดขึ้น GitHub Pages
 1. สร้าง Repository ใหม่บน GitHub (เช่น `family-budget`)
